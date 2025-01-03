@@ -29,10 +29,11 @@ class datagen():
     def __init__(self):
         freetype.init()
         # cur_file_path = os.path.dirname(__file__)
-        font_dir = data_cfg.font_dir
-        self.font_list = os.listdir(font_dir)
-        self.font_list = [os.path.join(font_dir, font_name) for font_name in self.font_list]
-        self.standard_font_path = data_cfg.standard_font_path
+        self.hard_font_list = [os.path.join(data_cfg.hard_font, font_name) for font_name in os.listdir(data_cfg.hard_font)]
+        self.normal_font_list = [os.path.join(data_cfg.normal_font, font_name) for font_name in os.listdir(data_cfg.normal_font)]
+        self.font_cache = {}
+
+        self.standard_font = self.get_cached_font(data_cfg.standard_font_path)
 
         color_filepath = data_cfg.color_filepath
         self.colorsRGB, self.colorsLAB = colorize.get_color_matrix(color_filepath)
@@ -42,8 +43,12 @@ class datagen():
         self.text_list = [text.strip() for text in self.text_list]
         
         # bg_filepath = os.path.join(cur_file_path, data_cfg.bg_filepath)
-        self.bg_list = open(data_cfg.bg_filepath, 'r').readlines()
-        self.bg_list = [img_path.strip() for img_path in self.bg_list]
+        bg_filepath = data_cfg.bg_filepath
+        self.bg_list = []
+        for img_file in os.listdir(bg_filepath):
+            full_path = os.path.join(bg_filepath, img_file)
+            if os.path.isfile(full_path) and img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                self.bg_list.append(full_path)
 
         self.surf_augmentor = Augmentor.DataPipeline(None)
         self.surf_augmentor.random_distortion(probability = data_cfg.elastic_rate,
@@ -57,11 +62,21 @@ class datagen():
             min_factor = data_cfg.color_min, max_factor = data_cfg.color_max)
         self.bg_augmentor.random_contrast(probability = data_cfg.contrast_rate, 
             min_factor = data_cfg.contrast_min, max_factor = data_cfg.contrast_max)
+
+    def get_cached_font(self, font_path):
+        if font_path not in self.font_cache:
+            self.font_cache[font_path] = freetype.Font(font_path)
+        return self.font_cache[font_path]
+
+
     def gen_srnet_data_with_background(self):
 
         while True:
             # choose font, text and bg
-            font = np.random.choice(self.font_list)
+            if np.random.rand() < data_cfg.hard_rate:
+                font = np.random.choice(self.hard_font_list)
+            else:
+                font = np.random.choice(self.normal_font_list)
             font_name = font
             text1, text2 = np.random.choice(self.text_list), np.random.choice(self.text_list)
             
@@ -73,7 +88,8 @@ class datagen():
 
             bg = cv2.imread(random.choice(self.bg_list))
             # init font
-            font = freetype.Font(font)
+            # font = freetype.Font(font)
+            font = self.get_cached_font(font)
             font.antialiased = True
             font.origin = True
 
@@ -93,6 +109,8 @@ class datagen():
             surf1, bbs1 = render_text_mask.render_text(font, text1, param)
             param['curve_center'] = int(param['curve_center'] / len(text1) * len(text2))
             surf2, bbs2 = render_text_mask.render_text(font, text2, param)
+
+            del font
 
             # get padding
             padding_ud = np.random.randint(data_cfg.padding_ud[0], data_cfg.padding_ud[1] + 1, 2)
@@ -134,7 +152,7 @@ class datagen():
             t_b = self.bg_augmentor.sample(1)[0][0]
 
             # render standard text
-            i_t = render_standard_text.make_standard_text(self.standard_font_path, text2, (surf_h, surf_w))
+            i_t = render_standard_text.make_standard_text(self.standard_font, text2, (surf_h, surf_w))
 
             # get min h of bbs
             min_h1 = np.min(bbs1[:, 3])

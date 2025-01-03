@@ -6,7 +6,7 @@ Written by Yu Qian
 """
 
 # dir
-data_dir = '.../train-50k-1/'
+data_dir = './train-50k-1/'
 i_t_dir = 'i_t'
 i_s_dir = 'i_s'
 t_sk_dir = 't_sk'
